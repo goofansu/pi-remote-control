@@ -10,7 +10,7 @@
  * The server stops automatically when the session closes.
  */
 
-import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { Container, Key, Text, matchesKey } from "@mariozechner/pi-tui";
@@ -23,6 +23,9 @@ import { serializeMessage } from "./messages.js";
 import { type RemoteServer, startServer } from "./server.js";
 
 // ── Extension entry point ────────────────────────────────────────────────────
+
+const _require = createRequire(import.meta.url);
+const QRCode = _require("qrcode") as { toString: (text: string, opts: any) => Promise<string> };
 
 export default function remoteControl(pi: ExtensionAPI) {
 	let server: RemoteServer | undefined;
@@ -145,12 +148,10 @@ export default function remoteControl(pi: ExtensionAPI) {
 		// Generate QR code
 		let qrLines: string[] = [];
 		try {
-			const qr = execFileSync("qrencode", ["-t", "UTF8", "-m", "1", url], {
-				encoding: "utf8",
-			}).trimEnd();
-			qrLines = qr.split("\n");
+			const qr = await QRCode.toString(url, { type: "utf8", margin: 2 });
+			qrLines = qr.trimEnd().split("\n");
 		} catch {
-			// qrencode not available
+			// QR code generation failed
 		}
 
 		// Show in editor area — press any key to dismiss
