@@ -341,6 +341,11 @@ return /* html */ `<!DOCTYPE html>
       color: #fff;
     }
     #send-btn.ready:active { transform: scale(0.9); }
+    #send-btn.stop {
+      background: var(--tool-err);
+      color: #fff;
+    }
+    #send-btn.stop:active { transform: scale(0.9); }
     #send-btn:disabled {
       background: var(--border);
       color: var(--muted);
@@ -352,6 +357,15 @@ return /* html */ `<!DOCTYPE html>
       height: 20px;
       fill: currentColor;
     }
+    #send-btn .icon-stop {
+      display: none;
+      width: 14px;
+      height: 14px;
+      background: #fff;
+      border-radius: 2px;
+    }
+    #send-btn.stop svg { display: none; }
+    #send-btn.stop .icon-stop { display: block; }
 
     #messages::-webkit-scrollbar { width: 6px; }
     #messages::-webkit-scrollbar-track { background: transparent; }
@@ -369,7 +383,7 @@ return /* html */ `<!DOCTYPE html>
   <div id="active-tools"></div>
   <div id="input-area">
     <textarea id="prompt" placeholder="Message\u2026" rows="1"></textarea>
-    <button id="send-btn" disabled aria-label="Send"><svg viewBox="0 0 24 24"><path d="M3.4 20.4l17.45-7.48a1 1 0 000-1.84L3.4 3.6a.993.993 0 00-1.39.91L2 9.12c0 .5.37.93.87.99L17 12 2.87 13.88c-.5.07-.87.5-.87 1l.01 4.61c0 .71.73 1.2 1.39.91z"/></svg></button>
+    <button id="send-btn" disabled aria-label="Send"><svg viewBox="0 0 24 24"><path d="M3.4 20.4l17.45-7.48a1 1 0 000-1.84L3.4 3.6a.993.993 0 00-1.39.91L2 9.12c0 .5.37.93.87.99L17 12 2.87 13.88c-.5.07-.87.5-.87 1l.01 4.61c0 .71.73 1.2 1.39.91z"/></svg><div class="icon-stop"></div></button>
   </div>
 </div>
 <script nonce="${nonce}">
@@ -551,7 +565,26 @@ return /* html */ `<!DOCTYPE html>
       ? (S.streaming ? "Agent working\u2026" : "Connected")
       : "Disconnected \u2014 reconnecting\u2026";
     $sendBtn.disabled = !connected;
-    if (!connected) $sendBtn.classList.remove("ready");
+    if (!connected) {
+      $sendBtn.classList.remove("ready");
+      $sendBtn.classList.remove("stop");
+    }
+    updateSendBtn();
+  }
+
+  function updateSendBtn() {
+    if (!ws || ws.readyState !== 1) return;
+    var hasText = $prompt.value.trim().length > 0;
+    if (S.streaming) {
+      $sendBtn.classList.add("stop");
+      $sendBtn.classList.remove("ready");
+      $sendBtn.disabled = false;
+      $sendBtn.setAttribute("aria-label", "Stop");
+    } else {
+      $sendBtn.classList.remove("stop");
+      $sendBtn.classList.toggle("ready", hasText);
+      $sendBtn.setAttribute("aria-label", "Send");
+    }
   }
 
   var ws, timer;
@@ -638,15 +671,18 @@ return /* html */ `<!DOCTYPE html>
   function autoGrow() {
     $prompt.style.height = "auto";
     $prompt.style.height = Math.min($prompt.scrollHeight, 120) + "px";
-    // Toggle send button ready state
-    var hasText = $prompt.value.trim().length > 0;
-    $sendBtn.classList.toggle("ready", hasText);
+    updateSendBtn();
   }
   $prompt.addEventListener("input", autoGrow);
 
   function send() {
+    if (!ws || ws.readyState !== 1) return;
+    if (S.streaming) {
+      ws.send(JSON.stringify({ type: "stop" }));
+      return;
+    }
     var text = $prompt.value.trim();
-    if (!text || !ws || ws.readyState !== 1) return;
+    if (!text) return;
     ws.send(JSON.stringify({ type: "prompt", text: text }));
     $prompt.value = "";
     autoGrow();

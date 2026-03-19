@@ -190,6 +190,12 @@ export function startServer(pi: ExtensionAPI, ctx: ExtensionContext): Promise<Re
 			} catch {
 				return;
 			}
+			if (msg.type === "stop") {
+				if (!ctx.isIdle()) {
+					ctx.abort();
+				}
+				return;
+			}
 			if (msg.type === "prompt" && typeof msg.text === "string" && msg.text.trim()) {
 				const text = msg.text.trim();
 				// Sliding-window rate limit
