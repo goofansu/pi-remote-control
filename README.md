@@ -6,22 +6,12 @@
 pi install https://github.com/goofansu/pi-remote-control
 ```
 
-## Setup
+## Usage
 
-### 1. Configure your public URL
+Run `/remote-control` to open the menu:
 
-Tell the extension the base URL your proxy/tunnel exposes:
+- **Turn on / Turn off** — start or stop the server
+- **Configure URL** — set the public base URL your proxy/tunnel exposes (saved to `~/.pi/agent/remote-control.json`)
+- **Status** — show the QR code and connection URL (only when server is running)
 
-```
-/remote-control config
-```
-
-Enter something like `http://pi.myhost` or `https://pi.example.com`. This is saved to `~/.pi/agent/remote-control.json`.
-
-### 2. Start the server
-
-```
-/remote-control
-```
-
-This starts the server on a random localhost port, generates an auth token, and displays a QR code + URL. Open the URL on any device.
+On first use, you'll be prompted to configure the URL before the server starts.

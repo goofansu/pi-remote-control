@@ -103,7 +103,10 @@ async function configureRemoteControlUI(ctx: ExtensionContext): Promise<void> {
 	if (!ctx.hasUI) return;
 
 	const current = (await readRemoteControlConfig()).publicBaseUrl ?? "";
-	const raw = await ctx.ui.input("Remote-control public base URL", current || "e.g. http://pi.sgponte");
+	const title = current
+		? `Public base URL (current: ${current})`
+		: "Public base URL";
+	const raw = await ctx.ui.input(title, "e.g. http://pi.myhost");
 	if (raw === undefined) return;
 
 	let value: string;
@@ -1215,62 +1218,93 @@ export default function remoteControl(pi: ExtensionAPI) {
 
 	// ── /remote-control command ───────────────────────────────────────────────
 
+	async function showConnectionInfo(ctx: ExtensionContext): Promise<void> {
+		if (!server) return;
+
+		const config = await readRemoteControlConfig();
+		const publicBaseUrl = config.publicBaseUrl?.trim();
+		if (!publicBaseUrl) return;
+
+		const url = buildRemoteControlUrl(publicBaseUrl, server.port, server.token);
+
+		// Generate QR code
+		let qrLines: string[] = [];
+		try {
+			const qr = execFileSync("qrencode", ["-t", "UTF8", "-m", "1", url], {
+				encoding: "utf8",
+			}).trimEnd();
+			qrLines = qr.split("\n");
+		} catch {
+			// qrencode not available
+		}
+
+		// Show in editor area — press any key to dismiss
+		await ctx.ui.custom<void>((_tui, theme, _kb, done) => {
+			const container = new Container();
+			container.addChild(new DynamicBorder((s) => theme.fg("accent", s)));
+			container.addChild(new Text(
+				theme.fg("accent", theme.bold(" Remote-control")) + theme.fg("dim", "  (Esc/q/Enter to close)"),
+				1, 0,
+			));
+			container.addChild(new Text("\n" + qrLines.map((l) => ` ${l}`).join("\n") + "\n", 1, 0));
+			container.addChild(new Text(theme.fg("accent", url), 1, 0));
+			container.addChild(new DynamicBorder((s) => theme.fg("accent", s)));
+
+			return {
+				render: (w) => container.render(w),
+				invalidate: () => container.invalidate(),
+				handleInput: (data) => {
+					if (matchesKey(data, Key.escape) || data.toLowerCase() === "q" || matchesKey(data, Key.enter)) done();
+				},
+			};
+		});
+	}
+
 	pi.registerCommand("remote-control", {
-		description: "Start localhost-only remote control server for use behind a port-forwarding proxy",
+		description: "Remote control — start/stop server, configure, show connection info",
 		handler: async (args, ctx) => {
 			if (!ctx.hasUI) return;
-			const subcommand = args.trim().toLowerCase();
-			if (subcommand === "config") {
-				await configureRemoteControlUI(ctx);
-				return;
-			}
 
+			const isRunning = !!server;
 			const config = await readRemoteControlConfig();
-			const publicBaseUrl = config.publicBaseUrl?.trim();
-			if (!publicBaseUrl) {
-				ctx.ui.notify("Set the public URL first with /remote-control config", "warning");
-				return;
-			}
+			const currentUrl = config.publicBaseUrl?.trim();
 
-			// Start server on first invocation
-			if (!server) {
+			const configLabel = currentUrl ? `Configure URL (${currentUrl})` : "Configure URL (not set)";
+			const menuItems = [
+				isRunning ? "Turn off" : "Turn on",
+				configLabel,
+				...(isRunning ? ["Status"] : []),
+			];
+
+			const choice = await ctx.ui.select("Remote control", menuItems);
+			if (choice === undefined) return;
+
+			if (choice === "Turn on") {
+				const publicBaseUrl = currentUrl;
+				if (!publicBaseUrl) {
+					ctx.ui.notify("Set the public URL first — opening config…", "warning");
+					await configureRemoteControlUI(ctx);
+					// Re-check after config
+					const updated = await readRemoteControlConfig();
+					if (!updated.publicBaseUrl?.trim()) return;
+				}
 				server = await startServer(pi, ctx);
 				server.onClientChange(() => updateStatus(ctx));
 				updateStatus(ctx);
+				ctx.ui.notify("Remote-control server started", "info");
+				await showConnectionInfo(ctx);
+			} else if (choice === "Turn off") {
+				if (server) {
+					await server.stop();
+					server = undefined;
+					ctx.ui.setStatus("remote-control", undefined);
+					ctx.ui.notify("Remote-control server stopped", "info");
+				}
+			} else if (choice === configLabel) {
+				await configureRemoteControlUI(ctx);
+			} else if (choice === "Status") {
+				await showConnectionInfo(ctx);
 			}
-			const url = buildRemoteControlUrl(publicBaseUrl, server.port, server.token);
-
-			// Generate QR code
-			let qrLines: string[] = [];
-			try {
-				const qr = execFileSync("qrencode", ["-t", "UTF8", "-m", "1", url], {
-					encoding: "utf8",
-				}).trimEnd();
-				qrLines = qr.split("\n");
-			} catch {
-				// qrencode not available
-			}
-
-			// Show in editor area — press any key to dismiss
-			await ctx.ui.custom<void>((_tui, theme, _kb, done) => {
-				const container = new Container();
-				container.addChild(new DynamicBorder((s) => theme.fg("accent", s)));
-				container.addChild(new Text(
-					theme.fg("accent", theme.bold(" Remote-control")) + theme.fg("dim", "  (Esc/q/Enter to close)"),
-					1, 0,
-				));
-				container.addChild(new Text("\n" + qrLines.map((l) => ` ${l}`).join("\n") + "\n", 1, 0));
-				container.addChild(new Text(theme.fg("accent", url), 1, 0));
-				container.addChild(new DynamicBorder((s) => theme.fg("accent", s)));
-
-				return {
-					render: (w) => container.render(w),
-					invalidate: () => container.invalidate(),
-					handleInput: (data) => {
-						if (matchesKey(data, Key.escape) || data.toLowerCase() === "q" || matchesKey(data, Key.enter)) done();
-					},
-				};
-			});
 		},
 	});
 }
