@@ -892,11 +892,13 @@ interface RemoteServer {
 	broadcast: (msg: object) => void;
 	stop: () => Promise<void>;
 	clientCount: () => number;
+	onClientChange: (cb: () => void) => void;
 	port: number;
 	token: string;
 }
 
 function startServer(pi: ExtensionAPI, ctx: ExtensionContext): Promise<RemoteServer> {
+	const clientChangeListeners: Array<() => void> = [];
 	const clients = new Set<any>();
 	const token = generateToken();
 	// Map of valid session IDs → expiry timestamp (ms since epoch)
@@ -1015,6 +1017,7 @@ function startServer(pi: ExtensionAPI, ctx: ExtensionContext): Promise<RemoteSer
 
 	wss.on("connection", (ws: any) => {
 		clients.add(ws);
+		for (const cb of clientChangeListeners) cb();
 
 		// Send full state snapshot to the new client
 		try {
@@ -1067,6 +1070,7 @@ function startServer(pi: ExtensionAPI, ctx: ExtensionContext): Promise<RemoteSer
 		const onClose = () => {
 			clients.delete(ws);
 			broadcast({ type: "status", clientCount: clients.size });
+			for (const cb of clientChangeListeners) cb();
 		};
 		ws.on("close", onClose);
 		ws.on("error", onClose);
@@ -1088,6 +1092,7 @@ function startServer(pi: ExtensionAPI, ctx: ExtensionContext): Promise<RemoteSer
 						wss.close(() => httpServer.close(() => res()));
 					}),
 				clientCount: () => clients.size,
+				onClientChange: (cb: () => void) => { clientChangeListeners.push(cb); },
 				get port() {
 					return (httpServer.address() as any)?.port ?? 0;
 				},
@@ -1104,7 +1109,49 @@ function startServer(pi: ExtensionAPI, ctx: ExtensionContext): Promise<RemoteSer
 export default function remoteControl(pi: ExtensionAPI) {
 	let server: RemoteServer | undefined;
 
+	// ── CLI flag ──────────────────────────────────────────────────────────────
+
+	pi.registerFlag("remote-control", {
+		description: "Start the remote-control server automatically on session start",
+		type: "boolean",
+		default: false,
+	});
+
+	// ── Status indicator ──────────────────────────────────────────────────────
+
+	function updateStatus(ctx: ExtensionContext): void {
+		if (!ctx.hasUI || !server) return;
+		const clients = server.clientCount();
+		const label = clients > 0 ? `remote:${clients}` : "remote:on";
+		ctx.ui.setStatus("remote-control", ctx.ui.theme.fg("accent", label));
+	}
+
 	// ── Lifecycle ──────────────────────────────────────────────────────────────
+
+	pi.on("session_start", async (_event, ctx) => {
+		if (pi.getFlag("remote-control") !== true) return;
+
+		const config = await readRemoteControlConfig();
+		const publicBaseUrl = config.publicBaseUrl?.trim();
+		if (!publicBaseUrl) {
+			if (ctx.hasUI) {
+				ctx.ui.notify(
+					"--remote-control: no publicBaseUrl configured. Run /remote-control config first.",
+					"warning",
+				);
+			}
+			return;
+		}
+
+		server = await startServer(pi, ctx);
+		server.onClientChange(() => updateStatus(ctx));
+		const url = buildRemoteControlUrl(publicBaseUrl, server.port, server.token);
+
+		if (ctx.hasUI) {
+			ctx.ui.notify(`Remote-control started: ${url}`, "info");
+		}
+		updateStatus(ctx);
+	});
 
 	pi.on("session_shutdown", async () => {
 		if (server) {
@@ -1115,12 +1162,14 @@ export default function remoteControl(pi: ExtensionAPI) {
 
 	// ── Event bridge: pi → clients ────────────────────────────────────────────
 
-	pi.on("agent_start", async () => {
+	pi.on("agent_start", async (_event, ctx) => {
 		server?.broadcast({ type: "agent_start" });
+		updateStatus(ctx);
 	});
 
-	pi.on("agent_end", async () => {
+	pi.on("agent_end", async (_event, ctx) => {
 		server?.broadcast({ type: "agent_end" });
+		updateStatus(ctx);
 	});
 
 	pi.on("message_update", async (event) => {
@@ -1176,16 +1225,18 @@ export default function remoteControl(pi: ExtensionAPI) {
 				return;
 			}
 
-			// Start server on first invocation
-			if (!server) {
-				server = await startServer(pi, ctx);
-			}
-
 			const config = await readRemoteControlConfig();
 			const publicBaseUrl = config.publicBaseUrl?.trim();
 			if (!publicBaseUrl) {
 				ctx.ui.notify("Set the public URL first with /remote-control config", "warning");
 				return;
+			}
+
+			// Start server on first invocation
+			if (!server) {
+				server = await startServer(pi, ctx);
+				server.onClientChange(() => updateStatus(ctx));
+				updateStatus(ctx);
 			}
 			const url = buildRemoteControlUrl(publicBaseUrl, server.port, server.token);
 
