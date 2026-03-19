@@ -1,0 +1,16 @@
+{
+  "name": "pi-remote-control",
+  "version": "1.0.0",
+  "description": "Expose a running pi session over HTTP/WebSocket — view and interact from any browser on your network.",
+  "keywords": [
+    "pi-package"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.0.0"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*"
+  }
+}
