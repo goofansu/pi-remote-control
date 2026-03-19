@@ -226,15 +226,34 @@ export function startServer(pi: ExtensionAPI, ctx: ExtensionContext): Promise<Re
 			resolve({
 				broadcast,
 				stop: () =>
-					new Promise((res) => {
+					new Promise<void>((res) => {
+						// Forcefully kill all WebSocket clients — terminate() sends no
+						// close frame and doesn't wait for the remote end to acknowledge,
+						// so it can't hang on an unresponsive client.
 						for (const client of clients) {
 							try {
-								client.close();
+								client.terminate();
 							} catch {
 								/* ignore */
 							}
 						}
-						wss.close(() => httpServer.close(() => res()));
+						clients.clear();
+
+						// Safety timeout — if wss/http shutdown callbacks never fire
+						// (e.g. lingering keep-alive sockets), resolve anyway so the
+						// session_shutdown handler doesn't block pi from exiting.
+						const timeout = setTimeout(() => {
+							httpServer.close(() => {});
+							httpServer.closeAllConnections?.();
+							res();
+						}, 2000);
+
+						wss.close(() =>
+							httpServer.close(() => {
+								clearTimeout(timeout);
+								res();
+							}),
+						);
 					}),
 				clientCount: () => clients.size,
 				onClientChange: (cb: () => void) => { clientChangeListeners.push(cb); },
