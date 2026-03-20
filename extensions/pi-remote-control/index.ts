@@ -13,7 +13,7 @@
 import { createRequire } from "node:module";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
-import { Container, Key, Text, matchesKey } from "@mariozechner/pi-tui";
+import { Container, Text } from "@mariozechner/pi-tui";
 import {
 	readRemoteControlConfig,
 	buildRemoteControlUrl,
@@ -154,12 +154,12 @@ export default function remoteControl(pi: ExtensionAPI) {
 			// QR code generation failed
 		}
 
-		// Show in editor area — press any key to dismiss
-		await ctx.ui.custom<void>((_tui, theme, _kb, done) => {
+		// Show in editor area — use confirm/cancel to dismiss
+		await ctx.ui.custom<void>((_tui, theme, kb, done) => {
 			const container = new Container();
 			container.addChild(new DynamicBorder((s) => theme.fg("accent", s)));
 			container.addChild(new Text(
-				theme.fg("accent", theme.bold(" Remote-control")) + theme.fg("dim", "  (Esc/q/Enter to close)"),
+				theme.fg("accent", theme.bold(" Remote-control")) + theme.fg("dim", "  (confirm/cancel to close)"),
 				1, 0,
 			));
 			container.addChild(new Text("\n" + qrLines.map((l) => ` ${l}`).join("\n") + "\n", 1, 0));
@@ -170,7 +170,7 @@ export default function remoteControl(pi: ExtensionAPI) {
 				render: (w) => container.render(w),
 				invalidate: () => container.invalidate(),
 				handleInput: (data) => {
-					if (matchesKey(data, Key.escape) || data.toLowerCase() === "q" || matchesKey(data, Key.enter)) done();
+					if (kb.matches(data, "tui.select.cancel") || kb.matches(data, "tui.select.confirm")) done();
 				},
 			};
 		});
