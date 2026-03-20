@@ -97,7 +97,7 @@ export function startServer(pi: ExtensionAPI, ctx: ExtensionContext): Promise<Re
 			const hasValidToken = providedToken && validateToken(providedToken, token);
 
 			if (!hasValidSession && !hasValidToken) {
-				res.writeHead(403, { "Content-Type": "text/plain" });
+				res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
 				res.end("Forbidden — valid token required. Use the URL shown in the pi terminal.");
 				return;
 			}
@@ -127,7 +127,7 @@ export function startServer(pi: ExtensionAPI, ctx: ExtensionContext): Promise<Re
 			});
 			res.end(buildHTML(nonce));
 		} else {
-			res.writeHead(404, { "Content-Type": "text/plain" });
+			res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
 			res.end("Not found");
 		}
 	});
