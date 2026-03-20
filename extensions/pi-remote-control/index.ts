@@ -12,7 +12,7 @@
 
 import { createRequire } from "node:module";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { DynamicBorder } from "@mariozechner/pi-coding-agent";
+import { DynamicBorder, keyHint } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import {
 	readRemoteControlConfig,
@@ -159,7 +159,11 @@ export default function remoteControl(pi: ExtensionAPI) {
 			const container = new Container();
 			container.addChild(new DynamicBorder((s) => theme.fg("accent", s)));
 			container.addChild(new Text(
-				theme.fg("accent", theme.bold(" Remote-control")) + theme.fg("dim", "  (confirm/cancel to close)"),
+				theme.fg("accent", theme.bold(" Remote-control")) +
+					"  " +
+					keyHint("tui.select.confirm", "close") +
+					theme.fg("muted", " · ") +
+					keyHint("tui.select.cancel", "cancel"),
 				1, 0,
 			));
 			container.addChild(new Text("\n" + qrLines.map((l) => ` ${l}`).join("\n") + "\n", 1, 0));
