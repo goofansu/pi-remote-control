@@ -74,6 +74,11 @@ export default function remoteControl(pi: ExtensionAPI) {
 		updateStatus(ctx);
 	});
 
+	pi.on("session_switch", async (_event, ctx) => {
+		server?.sync(ctx);
+		updateStatus(ctx);
+	});
+
 	pi.on("session_shutdown", async () => {
 		if (server) {
 			await server.stop();

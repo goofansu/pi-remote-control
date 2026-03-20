@@ -16,7 +16,7 @@ import {
 	generateSessionId,
 	parseCookies,
 } from "./auth.js";
-import { getBranchMessages } from "./messages.js";
+import { buildSyncMessage } from "./messages.js";
 import { buildHTML } from "./html.js";
 
 // Load ws (bundled with pi) without needing @types/ws installed locally
@@ -29,6 +29,7 @@ const { WebSocketServer, OPEN } = wsModule;
 
 export interface RemoteServer {
 	broadcast: (msg: object) => void;
+	sync: (ctx: ExtensionContext) => void;
 	stop: () => Promise<void>;
 	clientCount: () => number;
 	onClientChange: (cb: () => void) => void;
@@ -77,6 +78,10 @@ export function startServer(pi: ExtensionAPI, ctx: ExtensionContext): Promise<Re
 				}
 			}
 		}
+	}
+
+	function sync(currentCtx: ExtensionContext): void {
+		broadcast(buildSyncMessage(currentCtx));
 	}
 
 	const httpServer = createServer((req, res) => {
@@ -160,18 +165,7 @@ export function startServer(pi: ExtensionAPI, ctx: ExtensionContext): Promise<Re
 
 		// Send full state snapshot to the new client
 		try {
-			ws.send(
-				JSON.stringify({
-					type: "sync",
-					messages: getBranchMessages(ctx),
-					state: {
-						isStreaming: !ctx.isIdle(),
-						model: ctx.model?.id,
-						cwd: ctx.cwd,
-						sessionName: ctx.sessionManager.getSessionName(),
-					},
-				}),
-			);
+			ws.send(JSON.stringify(buildSyncMessage(ctx)));
 		} catch {
 			/* client disconnected before first send */
 		}
@@ -225,6 +219,7 @@ export function startServer(pi: ExtensionAPI, ctx: ExtensionContext): Promise<Re
 		httpServer.listen(0, "127.0.0.1", () => {
 			resolve({
 				broadcast,
+				sync,
 				stop: () =>
 					new Promise<void>((res) => {
 						// Forcefully kill all WebSocket clients — terminate() sends no

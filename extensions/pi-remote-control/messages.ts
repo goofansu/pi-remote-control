@@ -79,3 +79,25 @@ export function getBranchMessages(ctx: ExtensionContext): RenderMsg[] {
 	}
 	return out;
 }
+
+export function buildSyncMessage(ctx: ExtensionContext): {
+	type: "sync";
+	messages: RenderMsg[];
+	state: {
+		isStreaming: boolean;
+		model: string | undefined;
+		cwd: string;
+		sessionName: string | undefined;
+	};
+} {
+	return {
+		type: "sync",
+		messages: getBranchMessages(ctx),
+		state: {
+			isStreaming: !ctx.isIdle(),
+			model: ctx.model?.id,
+			cwd: ctx.cwd,
+			sessionName: ctx.sessionManager.getSessionName(),
+		},
+	};
+}
