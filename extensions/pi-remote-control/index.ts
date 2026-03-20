@@ -29,6 +29,16 @@ const QRCode = _require("qrcode") as { toString: (text: string, opts: any) => Pr
 
 export default function remoteControl(pi: ExtensionAPI) {
 	let server: RemoteServer | undefined;
+	let pendingSyncTimer: ReturnType<typeof setTimeout> | undefined;
+
+	function scheduleSync(ctx: ExtensionContext): void {
+		if (pendingSyncTimer) clearTimeout(pendingSyncTimer);
+		pendingSyncTimer = setTimeout(() => {
+			pendingSyncTimer = undefined;
+			server?.sync(ctx);
+			updateStatus(ctx);
+		}, 0);
+	}
 
 	// ── CLI flag ──────────────────────────────────────────────────────────────
 
@@ -75,11 +85,18 @@ export default function remoteControl(pi: ExtensionAPI) {
 	});
 
 	pi.on("session_switch", async (_event, ctx) => {
-		server?.sync(ctx);
-		updateStatus(ctx);
+		scheduleSync(ctx);
+	});
+
+	pi.on("model_select", async (_event, ctx) => {
+		scheduleSync(ctx);
 	});
 
 	pi.on("session_shutdown", async () => {
+		if (pendingSyncTimer) {
+			clearTimeout(pendingSyncTimer);
+			pendingSyncTimer = undefined;
+		}
 		if (server) {
 			await server.stop();
 			server = undefined;
