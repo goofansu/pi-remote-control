@@ -89,6 +89,7 @@ export default function remoteControl(pi: ExtensionAPI) {
 	});
 
 	pi.on("model_select", async (_event, ctx) => {
+		if (!ctx.isIdle()) return;
 		scheduleSync(ctx);
 	});
 
