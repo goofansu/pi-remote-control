@@ -60,6 +60,9 @@ export default function remoteControl(pi: ExtensionAPI) {
 	// ── Lifecycle ──────────────────────────────────────────────────────────────
 
 	pi.on("session_start", async (_event, ctx) => {
+		// Clear any stale status from before a reload
+		if (ctx.hasUI) ctx.ui.setStatus("remote-control", undefined);
+
 		if (pi.getFlag("remote-control") !== true) return;
 
 		const config = await readRemoteControlConfig();
