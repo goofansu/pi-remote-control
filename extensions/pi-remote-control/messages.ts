@@ -80,6 +80,13 @@ export function getBranchMessages(ctx: ExtensionContext): RenderMsg[] {
 	return out;
 }
 
+function abbreviateHome(p: string): string {
+	const home = process.env.HOME;
+	if (home && p === home) return "~";
+	if (home && p.startsWith(home + "/")) return "~" + p.slice(home.length);
+	return p;
+}
+
 export function buildSyncMessage(ctx: ExtensionContext): {
 	type: "sync";
 	messages: RenderMsg[];
@@ -96,7 +103,7 @@ export function buildSyncMessage(ctx: ExtensionContext): {
 		state: {
 			isStreaming: !ctx.isIdle(),
 			model: ctx.model?.id,
-			cwd: ctx.cwd,
+			cwd: abbreviateHome(ctx.cwd),
 			sessionName: ctx.sessionManager.getSessionName(),
 		},
 	};

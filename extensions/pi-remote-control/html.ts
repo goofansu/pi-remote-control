@@ -69,6 +69,16 @@ return /* html */ `<!DOCTYPE html>
     }
     #statusbar .dot.connected  { background: var(--asst); }
     #statusbar .dot.streaming  { background: var(--streaming); animation: pulse 1s infinite; }
+    #cwd-label {
+      font-family: "Menlo", "Monaco", "Consolas", monospace;
+      font-size: 11px;
+      color: var(--muted);
+      opacity: 0.8;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 55vw;
+    }
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
 
     /* ── Messages ── */
@@ -377,6 +387,7 @@ return /* html */ `<!DOCTYPE html>
   <div id="statusbar">
     <div class="dot" id="dot"></div>
     <span id="conn-label">Connecting\u2026</span>
+    <span id="cwd-label"></span>
     <span style="flex:1"></span>
   </div>
   <div id="messages"></div>
@@ -396,12 +407,14 @@ return /* html */ `<!DOCTYPE html>
     tools: {},
     streaming: false,
     model: null,
+    cwd: null,
   };
 
   var $msgs      = document.getElementById("messages");
   var $active    = document.getElementById("active-tools");
   var $dot       = document.getElementById("dot");
   var $connLabel = document.getElementById("conn-label");
+  var $cwdLabel  = document.getElementById("cwd-label");
   var $prompt    = document.getElementById("prompt");
   var $sendBtn   = document.getElementById("send-btn");
 
@@ -564,6 +577,8 @@ return /* html */ `<!DOCTYPE html>
     $connLabel.textContent = connected
       ? (S.streaming ? "Agent working\u2026" : "Connected")
       : "Disconnected \u2014 reconnecting\u2026";
+    var cwd = connected && S.cwd ? S.cwd : null;
+    $cwdLabel.textContent = cwd || "";
     $sendBtn.disabled = !connected;
     if (!connected) {
       $sendBtn.classList.remove("ready");
@@ -613,6 +628,7 @@ return /* html */ `<!DOCTYPE html>
           S.msgs      = msg.messages || [];
           S.streaming = !!(msg.state && msg.state.isStreaming);
           S.model     = msg.state && msg.state.model;
+          S.cwd       = (msg.state && msg.state.cwd) || null;
           S.pending   = null;
           S.tools     = {};
           renderAll();
