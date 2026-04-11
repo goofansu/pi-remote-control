@@ -6,42 +6,55 @@
 HTTP/WebSocket. The machine running pi is the **host**; any browser that
 connects is a **guest**.
 
-The server binds to `127.0.0.1` only (never the LAN). A local proxy or tunnel
-(e.g. Surge Ponte) forwards external traffic to it. The guest interacts
-through a self-contained single-page app served inline — no CDN, no external
-assets.
+The server supports two transport modes. In **Surge Ponte** mode it binds to
+`127.0.0.1` and is reached through a localhost proxy. In **Tailscale** mode it
+binds to `0.0.0.0` and is reachable via the Tailscale tailnet IP, making it
+accessible from any device on your tailnet including Android and iOS. The guest
+interacts through a self-contained single-page app served inline — no CDN, no
+external assets.
 
 ```mermaid
 graph LR
     subgraph Host["Host machine"]
         PI["pi process"]
         EXT["remote-control extension"]
-        SRV["HTTP + WS server — 127.0.0.1:port"]
+        SRV["HTTP + WS server"]
         PI -->|events| EXT
         EXT -->|broadcast| SRV
         SRV -->|sendUserMessage / abort| PI
     end
 
-    PROXY["Surge Ponte"]
-    SRV <-->|localhost| PROXY
+    TUNNEL["Surge Ponte or Tailscale"]
+    SRV <-->|localhost or tailnet| TUNNEL
 
     subgraph Guest["Guest browser"]
         UI["Single-page app"]
     end
 
-    PROXY <-->|HTTPS / WSS| UI
+    TUNNEL <-->|HTTPS / WSS| UI
 ```
+
+### Transport modes
+
+| Mode | Bind address | Reachable via | Notes |
+|------|-------------|---------------|-------|
+| Surge Ponte | `127.0.0.1` | Surge Ponte hostname | macOS only |
+| Tailscale | `0.0.0.0` | Tailscale IP (100.x.y.z) | Any OS, works on Android/iOS |
+
+In Tailscale mode the server binds to `0.0.0.0` so the Tailscale virtual
+interface can reach the port; access is still protected by the one-time token
+and session cookie auth flow.
 
 ## Files
 
 | File | Purpose |
 |------|---------|
 | `extensions/pi-remote-control/index.ts` | Extension entry point — registers flag, command, and event bridge |
-| `extensions/pi-remote-control/server.ts` | HTTP + WebSocket server, auth enforcement, client management |
+| `extensions/pi-remote-control/server.ts` | HTTP + WebSocket server: `startServer` (Surge), `startServerTailscale` (Tailscale), auth enforcement, client management |
 | `extensions/pi-remote-control/messages.ts` | Wire protocol: serialize session entries → `RenderMsg`, build `sync` payloads |
 | `extensions/pi-remote-control/html.ts` | Inline single-page web UI (self-contained, no external deps) |
 | `extensions/pi-remote-control/auth.ts` | One-time token generation/validation, session cookie helpers |
-| `extensions/pi-remote-control/config.ts` | Read/write `remote-control.json`, public URL normalization and config UI |
+| `extensions/pi-remote-control/config.ts` | Read/write `remote-control.json`, transport mode config, Tailscale IP detection (`detectTailscaleIp`), URL normalization |
 
 ## Authentication Flow
 
@@ -122,7 +135,9 @@ interface RenderMsg {
 
 ```mermaid
 flowchart TD
-    SS["session_start"] -->|--remote-control flag| START["startServer()"]
+    SS["session_start"] -->|--remote-control flag| MODE{"Transport?"}
+    MODE -->|Surge Ponte| START["startServer()"]
+    MODE -->|Tailscale| START_TS["startServerTailscale()"]
     START --> SYNC0["sync all clients"]
 
     SW["session_switch"] --> SYNC1["scheduleSync()"]

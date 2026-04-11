@@ -12,8 +12,11 @@ import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 const REMOTE_CONTROL_CONFIG_FILE = "remote-control.json";
 
+export type TransportMode = "surge" | "tailscale";
+
 export interface RemoteControlConfig {
 	publicBaseUrl?: string;
+	transport?: TransportMode;
 }
 
 function getAgentDir(): string {
@@ -54,7 +57,7 @@ export async function readRemoteControlConfig(): Promise<RemoteControlConfig> {
 	}
 }
 
-async function writeRemoteControlConfig(config: RemoteControlConfig): Promise<void> {
+export async function writeRemoteControlConfig(config: RemoteControlConfig): Promise<void> {
 	const configPath = getRemoteControlConfigPath();
 	await fs.mkdir(path.dirname(configPath), { recursive: true });
 	await fs.writeFile(configPath, JSON.stringify(config, null, 2) + "\n", "utf8");
@@ -103,4 +106,51 @@ export async function configureRemoteControlUI(ctx: ExtensionContext): Promise<v
 
 	await writeRemoteControlConfig({ publicBaseUrl: value });
 	ctx.ui.notify(`Saved remote-control URL to ${getRemoteControlConfigPath()}`, "info");
+}
+
+// ── Tailscale helpers ────────────────────────────────────────────────────────
+
+/**
+ * Detect whether tailscale is installed and running on this machine.
+ * Returns the Tailscale IPv4 address, or null if tailscale is not available.
+ */
+export async function detectTailscaleIp(): Promise<string | null> {
+	// Method 1: tailscale CLI
+	const { execSync } = await import("node:child_process");
+	try {
+		const ip = execSync("tailscale ip -4", { encoding: "utf8", timeout: 5000 }).trim();
+		if (ip && /^100\.\d+\.\d+\.\d+$/.test(ip)) return ip;
+	} catch {
+		// tailscale CLI not available or not logged in
+	}
+
+	// Method 2: Tailscale local API (HTTP on 100.100.100.100)
+	const http = await import("node:http");
+	return new Promise((resolve) => {
+		const req = http.get(
+			"http://100.100.100.100:9090/localapi/v0/status",
+			{ timeout: 3000 },
+			(res) => {
+				let body = "";
+				res.on("data", (chunk) => (body += chunk));
+				res.on("end", () => {
+					try {
+						const status = JSON.parse(body);
+						const self = status.Self;
+						if (self?.TailscaleIPs?.length > 0) {
+							const ip4 = self.TailscaleIPs.find((ip: string) => ip.startsWith("100."));
+							if (ip4) { resolve(ip4); return; }
+						}
+					} catch { /* parse error */ }
+					resolve(null);
+				});
+			},
+		);
+		req.on("error", () => resolve(null));
+		req.on("timeout", () => { req.destroy(); resolve(null); });
+	});
+}
+
+export async function isTailscaleRunning(): Promise<boolean> {
+	return (await detectTailscaleIp()) !== null;
 }

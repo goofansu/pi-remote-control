@@ -1,9 +1,8 @@
 /**
  * remote-control — Expose the running pi session over HTTP/WebSocket.
  *
- * Starts an HTTP + WebSocket server on a free port, bound to 127.0.0.1 (localhost only).
- * This is intended to sit behind a local port-forwarding proxy/tunnel that terminates on
- * the same host (for example Tailscale/Surge), rather than accepting direct LAN traffic.
+ * Starts an HTTP + WebSocket server on a free port, bound to 127.0.0.1 (localhost only)
+ * for Surge Ponte mode, or 0.0.0.0 for Tailscale mode.
  * Access requires a one-time token (?token=...) which sets a session cookie for
  * subsequent requests. Run /remote-control to start the server and display the URL.
  * The browser is expected to use http(s):// and ws(s):// through that proxy.
@@ -16,11 +15,15 @@ import { DynamicBorder, keyHint } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import {
 	readRemoteControlConfig,
+	writeRemoteControlConfig,
 	buildRemoteControlUrl,
 	configureRemoteControlUI,
+	detectTailscaleIp,
+	isTailscaleRunning,
+	type TransportMode,
 } from "./config.js";
 import { serializeMessage } from "./messages.js";
-import { type RemoteServer, startServer } from "./server.js";
+import { type RemoteServer, startServer, startServerTailscale } from "./server.js";
 
 // ── Extension entry point ────────────────────────────────────────────────────
 
@@ -30,6 +33,7 @@ const QRCode = _require("qrcode") as { toString: (text: string, opts: any) => Pr
 export default function remoteControl(pi: ExtensionAPI) {
 	let server: RemoteServer | undefined;
 	let pendingSyncTimer: ReturnType<typeof setTimeout> | undefined;
+	let tailscaleIp: string | null = null;
 
 	function scheduleSync(ctx: ExtensionContext): void {
 		if (pendingSyncTimer) clearTimeout(pendingSyncTimer);
@@ -66,23 +70,42 @@ export default function remoteControl(pi: ExtensionAPI) {
 		if (pi.getFlag("remote-control") !== true) return;
 
 		const config = await readRemoteControlConfig();
-		const publicBaseUrl = config.publicBaseUrl?.trim();
-		if (!publicBaseUrl) {
-			if (ctx.hasUI) {
-				ctx.ui.notify(
-					"--remote-control: no publicBaseUrl configured. Run /remote-control config first.",
-					"warning",
-				);
+		const transport = config.transport ?? "surge";
+
+		if (transport === "tailscale") {
+			tailscaleIp = await detectTailscaleIp();
+			if (!tailscaleIp) {
+				if (ctx.hasUI) {
+					ctx.ui.notify(
+						"--remote-control: Tailscale is not running. Run `tailscale up` first.",
+						"warning",
+					);
+				}
+				return;
 			}
-			return;
-		}
-
-		server = await startServer(pi, ctx);
-		server.onClientChange(() => updateStatus(ctx));
-		const url = buildRemoteControlUrl(publicBaseUrl, server.port, server.token);
-
-		if (ctx.hasUI) {
-			ctx.ui.notify(`Remote-control started: ${url}`, "info");
+			server = await startServerTailscale(pi, ctx);
+			server.onClientChange(() => updateStatus(ctx));
+			const url = `http://${tailscaleIp}:${server.port}/?token=${server.token}`;
+			if (ctx.hasUI) {
+				ctx.ui.notify(`Remote-control started (Tailscale): ${url}`, "info");
+			}
+		} else {
+			const publicBaseUrl = config.publicBaseUrl?.trim();
+			if (!publicBaseUrl) {
+				if (ctx.hasUI) {
+					ctx.ui.notify(
+						"--remote-control: no publicBaseUrl configured. Run /remote-control config first.",
+						"warning",
+					);
+				}
+				return;
+			}
+			server = await startServer(pi, ctx);
+			server.onClientChange(() => updateStatus(ctx));
+			const url = buildRemoteControlUrl(publicBaseUrl, server.port, server.token);
+			if (ctx.hasUI) {
+				ctx.ui.notify(`Remote-control started: ${url}`, "info");
+			}
 		}
 		updateStatus(ctx);
 	});
@@ -166,10 +189,16 @@ export default function remoteControl(pi: ExtensionAPI) {
 		if (!server) return;
 
 		const config = await readRemoteControlConfig();
-		const publicBaseUrl = config.publicBaseUrl?.trim();
-		if (!publicBaseUrl) return;
+		const transport = config.transport ?? "surge";
+		let url: string;
 
-		const url = buildRemoteControlUrl(publicBaseUrl, server.port, server.token);
+		if (transport === "tailscale" && tailscaleIp) {
+			url = `http://${tailscaleIp}:${server.port}/?token=${server.token}`;
+		} else {
+			const publicBaseUrl = config.publicBaseUrl?.trim();
+			if (!publicBaseUrl) return;
+			url = buildRemoteControlUrl(publicBaseUrl, server.port, server.token);
+		}
 
 		// Generate QR code
 		let qrLines: string[] = [];
@@ -208,17 +237,27 @@ export default function remoteControl(pi: ExtensionAPI) {
 
 	pi.registerCommand("remote-control", {
 		description: "Remote control — start/stop server, configure, show connection info",
-		handler: async (args, ctx) => {
+		handler: async (_args, ctx) => {
 			if (!ctx.hasUI) return;
 
 			const isRunning = !!server;
 			const config = await readRemoteControlConfig();
+			const transport = config.transport ?? "surge";
 			const currentUrl = config.publicBaseUrl?.trim();
 
+			// Detect Tailscale status
+			const tsRunning = await isTailscaleRunning();
+			if (tsRunning) tailscaleIp = await detectTailscaleIp();
+
 			const configLabel = currentUrl ? `Configure URL (${currentUrl})` : "Configure URL (not set)";
+			const transportLabel = transport === "tailscale"
+				? `Transport: Tailscale${tsRunning ? " ✓" : " (not running)"}`
+				: "Transport: Surge Ponte";
+
 			const menuItems = [
 				isRunning ? "Turn off" : "Turn on",
 				configLabel,
+				transportLabel,
 				...(isRunning ? ["Status"] : []),
 			];
 
@@ -226,16 +265,24 @@ export default function remoteControl(pi: ExtensionAPI) {
 			if (choice === undefined) return;
 
 			if (choice === "Turn on") {
-				const publicBaseUrl = currentUrl;
-				if (!publicBaseUrl) {
-					ctx.ui.notify("Set the public URL first — opening config…", "warning");
-					await configureRemoteControlUI(ctx);
-					// Re-check after config
-					const updated = await readRemoteControlConfig();
-					if (!updated.publicBaseUrl?.trim()) return;
+				if (transport === "tailscale") {
+					if (!tsRunning || !tailscaleIp) {
+						ctx.ui.notify("Tailscale is not running. Run `tailscale up` first.", "warning");
+						return;
+					}
+					server = await startServerTailscale(pi, ctx);
+					server.onClientChange(() => updateStatus(ctx));
+				} else {
+					const publicBaseUrl = currentUrl;
+					if (!publicBaseUrl) {
+						ctx.ui.notify("Set the public URL first — opening config…", "warning");
+						await configureRemoteControlUI(ctx);
+						const updated = await readRemoteControlConfig();
+						if (!updated.publicBaseUrl?.trim()) return;
+					}
+					server = await startServer(pi, ctx);
+					server.onClientChange(() => updateStatus(ctx));
 				}
-				server = await startServer(pi, ctx);
-				server.onClientChange(() => updateStatus(ctx));
 				updateStatus(ctx);
 				ctx.ui.notify("Remote-control server started", "info");
 				await showConnectionInfo(ctx);
@@ -248,6 +295,12 @@ export default function remoteControl(pi: ExtensionAPI) {
 				}
 			} else if (choice === configLabel) {
 				await configureRemoteControlUI(ctx);
+			} else if (choice === transportLabel) {
+				// Toggle transport mode
+				const modes: TransportMode[] = ["surge", "tailscale"];
+				const next = modes.find(m => m !== transport) ?? "surge";
+				await writeRemoteControlConfig({ ...config, transport: next });
+				ctx.ui.notify(`Transport switched to ${next === "tailscale" ? "Tailscale" : "Surge Ponte"}`, "info");
 			} else if (choice === "Status") {
 				await showConnectionInfo(ctx);
 			}
