@@ -103,30 +103,28 @@ export function startServer(pi: ExtensionAPI, ctx: ExtensionContext): Promise<Re
 				return;
 			}
 
-			// If authenticated via token (first visit), issue a session cookie and redirect to clean URL
-			if (!hasValidSession && hasValidToken) {
-				pruneExpiredSessions();
-				const sessionId = generateSessionId();
-				validSessions.set(sessionId, Date.now() + SESSION_TTL_MS);
-				res.writeHead(302, {
-					"Set-Cookie": `${SESSION_COOKIE}=${sessionId}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400`,
-					Location: "/",
-				});
-				res.end();
-				return;
-			}
+			// If authenticated via token (first visit), register a session cookie but serve the
+				// page directly — don't redirect. The token is embedded in the HTML so the JS
+				// can include it in the WebSocket URL. Avoids cookie/redirect issues on mobile.
+				let extraHeaders: Record<string, string> = {};
+				if (!hasValidSession && hasValidToken) {
+					pruneExpiredSessions();
+					const sessionId = generateSessionId();
+					validSessions.set(sessionId, Date.now() + SESSION_TTL_MS);
+					extraHeaders["Set-Cookie"] = `${SESSION_COOKIE}=${sessionId}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400`;
+				}
 
-			// Valid session cookie — serve the page
-			const nonce = randomBytes(16).toString("base64");
-			res.writeHead(200, {
-				"Content-Type": "text/html; charset=utf-8",
-				"X-Frame-Options": "DENY",
-				"X-Content-Type-Options": "nosniff",
-				"Referrer-Policy": "no-referrer",
-				"Content-Security-Policy":
-					`default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'`,
-			});
-			res.end(buildHTML(nonce, token));
+				const nonce = randomBytes(16).toString("base64");
+				res.writeHead(200, {
+					"Content-Type": "text/html; charset=utf-8",
+					"X-Frame-Options": "DENY",
+					"X-Content-Type-Options": "nosniff",
+					"Referrer-Policy": "no-referrer",
+					"Content-Security-Policy":
+						`default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'`,
+					...extraHeaders,
+				});
+				res.end(buildHTML(nonce, hasValidToken ? providedToken : undefined));
 		} else {
 			res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
 			res.end("Not found");
@@ -329,28 +327,28 @@ export function startServerTailscale(pi: ExtensionAPI, ctx: ExtensionContext): P
 				return;
 			}
 
-			if (!hasValidSession && hasValidToken) {
-				pruneExpiredSessions();
-				const sessionId = generateSessionId();
-				validSessions.set(sessionId, Date.now() + SESSION_TTL_MS);
-				res.writeHead(302, {
-					"Set-Cookie": `${SESSION_COOKIE}=${sessionId}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400`,
-					Location: "/",
-				});
-				res.end();
-				return;
-			}
+			// If authenticated via token (first visit), register a session cookie but serve the
+				// page directly — don't redirect. The token is embedded in the HTML so the JS
+				// can include it in the WebSocket URL. Avoids cookie/redirect issues on mobile.
+				let extraHeaders: Record<string, string> = {};
+				if (!hasValidSession && hasValidToken) {
+					pruneExpiredSessions();
+					const sessionId = generateSessionId();
+					validSessions.set(sessionId, Date.now() + SESSION_TTL_MS);
+					extraHeaders["Set-Cookie"] = `${SESSION_COOKIE}=${sessionId}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400`;
+				}
 
-			const nonce = randomBytes(16).toString("base64");
-			res.writeHead(200, {
-				"Content-Type": "text/html; charset=utf-8",
-				"X-Frame-Options": "DENY",
-				"X-Content-Type-Options": "nosniff",
-				"Referrer-Policy": "no-referrer",
-				"Content-Security-Policy":
-					`default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'`,
-			});
-			res.end(buildHTML(nonce, token));
+				const nonce = randomBytes(16).toString("base64");
+				res.writeHead(200, {
+					"Content-Type": "text/html; charset=utf-8",
+					"X-Frame-Options": "DENY",
+					"X-Content-Type-Options": "nosniff",
+					"Referrer-Policy": "no-referrer",
+					"Content-Security-Policy":
+						`default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'`,
+					...extraHeaders,
+				});
+				res.end(buildHTML(nonce, hasValidToken ? providedToken : undefined));
 		} else {
 			res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
 			res.end("Not found");
