@@ -126,7 +126,7 @@ export function startServer(pi: ExtensionAPI, ctx: ExtensionContext): Promise<Re
 				"Content-Security-Policy":
 					`default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'`,
 			});
-			res.end(buildHTML(nonce));
+			res.end(buildHTML(nonce, token));
 		} else {
 			res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
 			res.end("Not found");
@@ -350,7 +350,7 @@ export function startServerTailscale(pi: ExtensionAPI, ctx: ExtensionContext): P
 				"Content-Security-Policy":
 					`default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'`,
 			});
-			res.end(buildHTML(nonce));
+			res.end(buildHTML(nonce, token));
 		} else {
 			res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
 			res.end("Not found");

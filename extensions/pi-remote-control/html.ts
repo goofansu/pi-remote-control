@@ -5,7 +5,7 @@
  * Everything is self-contained — no external dependencies.
  */
 
-export function buildHTML(nonce: string): string {
+export function buildHTML(nonce: string, token?: string): string {
 return /* html */ `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -398,6 +398,7 @@ return /* html */ `<!DOCTYPE html>
   </div>
 </div>
 <script nonce="${nonce}">
+(function(){var _rcToken="${token || ''}";})();
 (function () {
   "use strict";
 
@@ -605,7 +606,11 @@ return /* html */ `<!DOCTYPE html>
   var ws, timer;
   function connect() {
     var wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
-    ws = new WebSocket(wsProtocol + "//" + location.host + "/ws");
+    var wsUrl = wsProtocol + "//" + location.host + "/ws";
+    if (typeof _rcToken !== "undefined" && _rcToken) {
+      wsUrl += "?token=" + encodeURIComponent(_rcToken);
+    }
+    ws = new WebSocket(wsUrl);
 
     ws.onopen = function () {
       clearTimeout(timer);
