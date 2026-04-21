@@ -14,7 +14,11 @@
     "@mariozechner/pi-coding-agent": "*",
     "@mariozechner/pi-tui": "*"
   },
+  "scripts": {
+    "lint": "biome check --write ."
+  },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.12",
     "@types/qrcode": "^1.5.6"
   }
 }

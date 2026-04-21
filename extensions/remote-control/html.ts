@@ -6,7 +6,7 @@
  */
 
 export function buildHTML(nonce: string): string {
-return /* html */ `<!DOCTYPE html>
+  return /* html */ `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">

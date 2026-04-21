@@ -7,104 +7,127 @@
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-export interface RenderMsg {
-	id: string; // SessionEntry id, or "pending" while streaming
-	role: "user" | "assistant" | "tool_result";
-	text: string;
-	toolCalls?: Array<{ id: string; name: string; args: string }>;
-	toolName?: string;
-	toolCallId?: string;
-	isError?: boolean;
-	model?: string;
+interface RawContent {
+  type: string;
+  text?: string;
+  id?: string;
+  name?: string;
+  arguments?: unknown;
 }
 
-export function serializeMessage(id: string, msg: any): RenderMsg | null {
-	if (msg.role === "user") {
-		const text =
-			typeof msg.content === "string"
-				? msg.content
-				: (msg.content as any[])
-						.filter((c) => c.type === "text")
-						.map((c) => c.text)
-						.join("");
-		return { id, role: "user", text };
-	}
+export interface RawMessage {
+  role: string;
+  content: string | RawContent[];
+  model?: string;
+  toolName?: string;
+  toolCallId?: string;
+  isError?: boolean;
+}
 
-	if (msg.role === "assistant") {
-		const text = (msg.content as any[])
-			.filter((c) => c.type === "text")
-			.map((c) => c.text)
-			.join("");
-		const toolCalls = (msg.content as any[])
-			.filter((c) => c.type === "toolCall")
-			.map((c) => ({
-				id: c.id,
-				name: c.name,
-				args: JSON.stringify(c.arguments, null, 2),
-			}));
-		return {
-			id,
-			role: "assistant",
-			text,
-			toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-			model: msg.model,
-		};
-	}
+export interface RenderMsg {
+  id: string; // SessionEntry id, or "pending" while streaming
+  role: "user" | "assistant" | "tool_result";
+  text: string;
+  toolCalls?: Array<{ id: string; name: string; args: string }>;
+  toolName?: string;
+  toolCallId?: string;
+  isError?: boolean;
+  model?: string;
+}
 
-	if (msg.role === "toolResult") {
-		const text = (msg.content as any[])
-			.filter((c) => c.type === "text")
-			.map((c) => c.text)
-			.join("");
-		return {
-			id,
-			role: "tool_result",
-			text,
-			toolName: msg.toolName,
-			toolCallId: msg.toolCallId,
-			isError: msg.isError,
-		};
-	}
+export function serializeMessage(
+  id: string,
+  msg: RawMessage,
+): RenderMsg | null {
+  if (msg.role === "user") {
+    const text =
+      typeof msg.content === "string"
+        ? msg.content
+        : (msg.content as RawContent[])
+            .filter((c) => c.type === "text")
+            .map((c) => c.text)
+            .join("");
+    return { id, role: "user", text };
+  }
 
-	return null;
+  if (msg.role === "assistant") {
+    const text = (msg.content as RawContent[])
+      .filter((c) => c.type === "text")
+      .map((c) => c.text)
+      .join("");
+    const toolCalls = (msg.content as RawContent[])
+      .filter((c) => c.type === "toolCall")
+      .map((c) => ({
+        id: c.id,
+        name: c.name,
+        args: JSON.stringify(c.arguments, null, 2),
+      }));
+    return {
+      id,
+      role: "assistant",
+      text,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      model: msg.model,
+    };
+  }
+
+  if (msg.role === "toolResult") {
+    const text = (msg.content as RawContent[])
+      .filter((c) => c.type === "text")
+      .map((c) => c.text)
+      .join("");
+    return {
+      id,
+      role: "tool_result",
+      text,
+      toolName: msg.toolName,
+      toolCallId: msg.toolCallId,
+      isError: msg.isError,
+    };
+  }
+
+  return null;
 }
 
 export function getBranchMessages(ctx: ExtensionContext): RenderMsg[] {
-	const branch = ctx.sessionManager.getBranch();
-	const out: RenderMsg[] = [];
-	for (const entry of branch) {
-		if (entry.type !== "message") continue;
-		const m = serializeMessage(entry.id, (entry as any).message);
-		if (m) out.push(m);
-	}
-	return out;
+  const branch = ctx.sessionManager.getBranch();
+  const out: RenderMsg[] = [];
+  for (const entry of branch) {
+    if (entry.type !== "message") continue;
+    const m = serializeMessage(
+      entry.id,
+      (entry as { id: string; type: string; message: RawMessage }).message,
+    );
+    if (m) out.push(m);
+  }
+  return out;
 }
 
 function abbreviateHome(p: string): string {
-	const home = process.env.HOME;
-	if (home && p === home) return "~";
-	if (home && p.startsWith(home + "/")) return "~" + p.slice(home.length);
-	return p;
+  const home = process.env.HOME;
+  if (home && p === home) return "~";
+  if (home && p.startsWith(`${home}/`)) return `~${p.slice(home.length)}`;
+  return p;
 }
 
 export function buildSyncMessage(ctx: ExtensionContext): {
-	type: "sync";
-	messages: RenderMsg[];
-	state: {
-		isStreaming: boolean;
-		model: string | undefined;
-		cwd: string;
-		sessionName: string | undefined;
-	};
+  type: "sync";
+  messages: RenderMsg[];
+  state: {
+    isStreaming: boolean;
+    model: string | undefined;
+    cwd: string;
+    sessionName: string | undefined;
+  };
 } {
-	return {
-		type: "sync",
-		messages: getBranchMessages(ctx),
-		state: {
-			isStreaming: !ctx.isIdle(),
-			model: ctx.model?.id,
-			cwd: abbreviateHome(ctx.cwd),
-			sessionName: ctx.sessionManager.getSessionName(),
-		},
-	};
+  return {
+    type: "sync",
+    messages: getBranchMessages(ctx),
+    state: {
+      isStreaming: !ctx.isIdle(),
+      model: ctx.model?.id,
+      cwd: abbreviateHome(ctx.cwd),
+      sessionName: ctx.sessionManager.getSessionName(),
+    },
+  };
 }
