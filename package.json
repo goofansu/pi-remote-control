@@ -16,6 +16,7 @@
   },
   "scripts": {
     "lint": "biome check --write .",
+    "lint:check": "biome check .",
     "prepare": "husky"
   },
   "devDependencies": {
