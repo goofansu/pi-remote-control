@@ -17,7 +17,7 @@
   "scripts": {
     "lint": "biome check --write .",
     "lint:check": "biome check .",
-    "prepare": "husky"
+    "prepare": "node .husky/install.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.12",
