@@ -13,7 +13,7 @@ import type { AddressInfo, Socket } from "node:net";
 import type {
   ExtensionAPI,
   ExtensionContext,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import {
   generateSessionId,
   generateToken,
