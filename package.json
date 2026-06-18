@@ -6,22 +6,24 @@
     "pi-package"
   ],
   "license": "MIT",
-  "dependencies": {
-    "qrcode": "^1.5.4",
-    "ws": "^8.0.0"
-  },
-  "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-tui": "*"
-  },
   "scripts": {
     "lint": "biome check --write .",
     "lint:check": "biome check .",
     "prepare": "node .husky/install.mjs"
   },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  },
   "devDependencies": {
     "@biomejs/biome": "^2.4.12",
+    "@earendil-works/pi-coding-agent": "^0.79.0",
+    "@earendil-works/pi-tui": "^0.79.0",
     "@types/qrcode": "^1.5.6",
     "husky": "^9.1.7"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "ws": "^8.0.0"
   }
 }
