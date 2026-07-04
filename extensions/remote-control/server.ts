@@ -258,7 +258,10 @@ export function startServer(
   });
 
   return new Promise((resolve) => {
-    httpServer.listen(0, "127.0.0.1", () => {
+    // Listen on all interfaces so the server is reachable over the Tailscale
+    // interface (100.x.y.z / MagicDNS). Access is expected to be constrained
+    // to the tailnet; do not expose the dynamic port to an untrusted network.
+    httpServer.listen(0, "0.0.0.0", () => {
       resolve({
         broadcast,
         sync,

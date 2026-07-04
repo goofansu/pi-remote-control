@@ -98,7 +98,10 @@ export async function configureRemoteControlUI(
   const title = current
     ? `Public base URL (current: ${current})`
     : "Public base URL";
-  const raw = await ctx.ui.input(title, "e.g. http://pi.myhost");
+  const raw = await ctx.ui.input(
+    title,
+    "e.g. http://100.x.y.z or http://your-machine.tailnet.ts.net",
+  );
   if (raw === undefined) return;
 
   let value: string;

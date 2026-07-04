@@ -6,30 +6,29 @@
 HTTP/WebSocket. The machine running pi is the **host**; any browser that
 connects is a **guest**.
 
-The server binds to `127.0.0.1` only (never the LAN). A local proxy or tunnel
-(e.g. Surge Ponte) forwards external traffic to it. The guest interacts
-through a self-contained single-page app served inline — no CDN, no external
-assets.
+The server listens on `0.0.0.0:port` so it is reachable over the host's
+Tailscale interface. The guest connects directly to the host's Tailscale
+address (`100.x.y.z` or a MagicDNS name) — no proxy or tunnel in between.
+Tailscale provides the end-to-end encrypted transport between devices. The
+guest interacts through a self-contained single-page app served inline — no
+CDN, no external assets.
 
 ```mermaid
 graph LR
     subgraph Host["Host machine"]
         PI["pi process"]
         EXT["remote-control extension"]
-        SRV["HTTP + WS server — 127.0.0.1:port"]
+        SRV["HTTP + WS server — 0.0.0.0:port"]
         PI -->|events| EXT
         EXT -->|broadcast| SRV
         SRV -->|sendUserMessage / abort| PI
     end
 
-    PROXY["Surge Ponte"]
-    SRV <-->|localhost| PROXY
-
     subgraph Guest["Guest browser"]
         UI["Single-page app"]
     end
 
-    PROXY <-->|HTTPS / WSS| UI
+    SRV <-->|Tailscale — HTTP / WS over encrypted tailnet| UI
 ```
 
 ## Files

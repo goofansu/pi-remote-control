@@ -15,7 +15,7 @@ pi install https://github.com/goofansu/pi-remote-control
 Run `/remote-control` to open the menu:
 
 - **Turn on / Turn off** — start or stop the server
-- **Configure URL** — set the base URL exposed by your local tunnel or proxy, saved to `~/.pi/agent/remote-control.json`
+- **Configure URL** — set the base URL other devices use to reach this machine (its Tailscale address), saved to `~/.pi/agent/remote-control.json`
 - **Status** — show the QR code and connection URL (only when server is running)
 
 > **Note:** On first use, you must configure the URL before the server can start.
@@ -28,26 +28,27 @@ pi --remote-control
 
 ## Use case
 
-The remote-control server binds to `127.0.0.1` on the host running `pi` and is reached through a local tunnel or proxy. This example uses [Surge Ponte](https://kb.nssurge.com/surge-knowledge-base/guidelines/ponte), which provides an end-to-end encrypted device-to-device tunnel without exposing the server to the LAN.
+The remote-control server runs on the host running `pi` and is reached directly over [Tailscale](https://tailscale.com) — no tunnel or proxy in between. Tailscale gives every device on your tailnet a stable, private, end-to-end encrypted address (a `100.x.y.z` IP, or a `machine.tailnet.ts.net` name if MagicDNS is enabled), so the guest device connects straight to the host.
 
 The setup is:
 
 1. Install this extension on the Mac that runs `pi`.
-2. Enable Surge Ponte on that Mac and give it a device name such as `pi`.
-3. On the same Mac, open `pi` and run the `/remote-control` command.
-4. Choose `Configure URL` and set the base URL to your Surge Ponte hostname, for example `http://pi.sgponte`.
-5. Choose `Turn on`.
-6. Open `Status` to get the QR code and connection URL for the current session.
-7. On another device on the same Surge Ponte network, open that URL in a browser.
+2. Install Tailscale on that Mac and on the device you'll connect from, and sign both into the same tailnet.
+3. On the Mac, find its Tailscale address with `tailscale ip -4` (or use its MagicDNS name).
+4. Open `pi` on the Mac and run the `/remote-control` command.
+5. Choose `Configure URL` and set the base URL to that Tailscale address, for example `http://100.101.102.103` or `http://your-machine.tailnet.ts.net`.
+6. Choose `Turn on`.
+7. Open `Status` to get the QR code and connection URL for the current session.
+8. On the other device (also on the tailnet), open that URL in a browser.
 
-In this setup, the browser URL is `http://pi.sgponte:<port>`, where the port is assigned when the server starts. Use `Status` to get the current URL or scan the QR code — it changes each time the server restarts.
+In this setup, the browser URL is `http://<tailscale-address>:<port>`, where the port is assigned when the server starts. Use `Status` to get the current URL or scan the QR code — it changes each time the server restarts.
 
 Here's what it looks like on iPhone — this is an actual session asking `pi` about its hardware environment:
 
-<img src="assets/screenshot-mobile.png" width="300" alt="pi remote control on iPhone via pi.sgponte">
+<img src="assets/screenshot-mobile.png" width="300" alt="pi remote control on iPhone via Tailscale">
 
 ## Security notes
 
-- The server only listens on localhost. Remote access depends on whatever local tunnel or proxy you configure.
+- The server listens on all interfaces (`0.0.0.0`) so it is reachable over the Tailscale interface. Keep access constrained to your tailnet — do not run this on a machine whose LAN or public interfaces you do not trust, and consider Tailscale ACLs to limit which devices can reach the port. If you need strict localhost-only binding, revert the listen host in `extensions/remote-control/server.ts`.
 - There is no multi-user authentication. Treat the connection URL as a secret for the lifetime of the session.
-- If you use a reverse proxy instead of Surge Ponte, configure it to terminate TLS at a fixed `https://` endpoint and forward to the server's dynamic backend port. Do not expose the dynamic port directly over a public network, as the server does not support HTTPS and any token or session cookie would be transmitted in cleartext.
+- Traffic between tailnet devices is end-to-end encrypted by Tailscale. The server itself does not terminate TLS, so do not expose the dynamic port directly over a public network — any token or session cookie would be transmitted in cleartext outside the tailnet.
